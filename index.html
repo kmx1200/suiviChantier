@@ -1067,32 +1067,46 @@ window.__ftpbSeed = async function(progress){
   let meta; try{ meta = JSON.parse(metaEl.textContent); }catch(e){ console.error(e); return; }
   metaEl.textContent = '';
   const applied = await idbGet('tables', '__seed_version');
-  if(applied === meta.version){ fileEls.forEach(s => s.textContent = ''); return; }
-  for(const [t, rows] of Object.entries(meta.tables || {})){
+  let __quiet = false;
+  if(applied === meta.version){
+    const __miss = await idbGet('tables', '__seed_missing'), __last = await idbGet('tables', '__seed_retry');
+    if(!(Array.isArray(__miss) && __miss.length) || (Date.now() - (__last || 0) < 86400000)){ fileEls.forEach(s => s.textContent = ''); return; }
+    __quiet = true;   /* relance silencieuse pour les fiches absentes (1 fois par jour) */
+  }
+  for(const [t, rows] of (__quiet ? [] : Object.entries(meta.tables || {}))){
     if(!DB[t] || !Array.isArray(rows)) continue;
     const ids = new Set(DB[t].map(r => r.id));
     rows.forEach(r => { if(!ids.has(r.id)) DB[t].push(r); });
     await idbPut('tables', t, DB[t]);
   }
-  let n = 0; const __missing = new Set();
+  let n = 0; const __missing = new Set(); let __neterr = false; const __fetched = new Set();
   for(const s of fileEls){
     const key = s.getAttribute('data-key');
     if(!FILE_KEYS.has(key)){
       let blob; const __src = s.getAttribute('data-src');
       if(__src){
-        let __r = null; try{ __r = await realFetch(__src); }catch(e){}
-        if(!__r || !__r.ok){ __missing.add(key); s.textContent = ''; if(progress) progress(++n, fileEls.length); continue; }  /* fiche absente du site : ignorée */
+        let __r = null; try{ __r = await realFetch(__src); }catch(e){ __neterr = true; }
+        if(!__r || !__r.ok){ __missing.add(key); s.textContent = ''; if(progress && !__quiet) progress(++n, fileEls.length); continue; }  /* fiche absente du site : ignorée */
         blob = new Blob([await __r.arrayBuffer()], { type: s.getAttribute('data-type') || 'application/pdf' });
       }
       else blob = b64ToBlob(s.textContent.trim(), s.getAttribute('data-type') || 'application/pdf');
-      await idbPut('files', key, { blob, name: s.getAttribute('data-name') || key, type: blob.type }); FILE_KEYS.add(key);
+      await idbPut('files', key, { blob, name: s.getAttribute('data-name') || key, type: blob.type }); FILE_KEYS.add(key); __fetched.add(key);
     }
     s.textContent = '';
-    if(progress) progress(++n, fileEls.length);
+    if(progress && !__quiet) progress(++n, fileEls.length);
   }
-  if(__missing.size){ /* fiches manquantes : on retire leurs entrées du catalogue et on réessaiera au prochain lancement */
+  if(__quiet && __fetched.size){ /* relance : on n'ajoute au catalogue que les fiches nouvellement arrivées */
+    const __ids = new Set(DB.catalog.map(r => r.id));
+    ((meta.tables || {}).catalog || []).forEach(r => { if(__fetched.has('catalog:' + r.id) && !__ids.has(r.id)) DB.catalog.push(r); });
+    await idbPut('tables', 'catalog', DB.catalog);
+  }
+  if(__missing.size){ /* fiches absentes du site : retirées du catalogue (réessai silencieux au plus 1 fois par jour) */
     DB.catalog = DB.catalog.filter(r => !__missing.has('catalog:' + r.id)); await idbPut('tables', 'catalog', DB.catalog);
-  } else await idbPut('tables', '__seed_version', meta.version);
+  }
+  if(!__neterr){ /* erreur réseau (hors ligne) : on ne valide pas, on réessaiera au prochain lancement */
+    await idbPut('tables', '__seed_missing', Array.from(__missing)); await idbPut('tables', '__seed_retry', Date.now());
+    await idbPut('tables', '__seed_version', meta.version);
+  }
 };
 window.__ftpbStartUi = async function(){ await window.__ftpbReady; injectUi(); startObserver(); };
 })();

@@ -1,7 +1,7 @@
 /* Service worker — Suivi de chantier FTPB
    Mise à jour automatique : à chaque nouvelle version (VERSION change), la nouvelle
    version s'active seule et les anciens caches sont supprimés. */
-const VERSION = 'a816aca105';
+const VERSION = 'efcf70c4f1';
 const SHELL_CACHE = 'ftpb-shell-' + VERSION;
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'pwa-register.js',
                'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/icon-180.png'];
