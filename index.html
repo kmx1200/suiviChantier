@@ -1074,19 +1074,25 @@ window.__ftpbSeed = async function(progress){
     rows.forEach(r => { if(!ids.has(r.id)) DB[t].push(r); });
     await idbPut('tables', t, DB[t]);
   }
-  let n = 0;
+  let n = 0; const __missing = new Set();
   for(const s of fileEls){
     const key = s.getAttribute('data-key');
     if(!FILE_KEYS.has(key)){
       let blob; const __src = s.getAttribute('data-src');
-      if(__src){ const __r = await realFetch(__src); if(!__r.ok) throw new Error('Téléchargement impossible : ' + __src + ' (' + __r.status + ')'); blob = new Blob([await __r.arrayBuffer()], { type: s.getAttribute('data-type') || 'application/pdf' }); }
+      if(__src){
+        let __r = null; try{ __r = await realFetch(__src); }catch(e){}
+        if(!__r || !__r.ok){ __missing.add(key); s.textContent = ''; if(progress) progress(++n, fileEls.length); continue; }  /* fiche absente du site : ignorée */
+        blob = new Blob([await __r.arrayBuffer()], { type: s.getAttribute('data-type') || 'application/pdf' });
+      }
       else blob = b64ToBlob(s.textContent.trim(), s.getAttribute('data-type') || 'application/pdf');
       await idbPut('files', key, { blob, name: s.getAttribute('data-name') || key, type: blob.type }); FILE_KEYS.add(key);
     }
     s.textContent = '';
     if(progress) progress(++n, fileEls.length);
   }
-  await idbPut('tables', '__seed_version', meta.version);
+  if(__missing.size){ /* fiches manquantes : on retire leurs entrées du catalogue et on réessaiera au prochain lancement */
+    DB.catalog = DB.catalog.filter(r => !__missing.has('catalog:' + r.id)); await idbPut('tables', 'catalog', DB.catalog);
+  } else await idbPut('tables', '__seed_version', meta.version);
 };
 window.__ftpbStartUi = async function(){ await window.__ftpbReady; injectUi(); startObserver(); };
 })();

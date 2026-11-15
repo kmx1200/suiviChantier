@@ -1,5 +1,5 @@
 /* Service worker — Suivi de chantier FTPB */
-const VERSION = '7e93dcd270';
+const VERSION = 'a816aca105';
 const SHELL_CACHE = 'ftpb-shell-' + VERSION;
 const SEED_CACHE = 'ftpb-seed-v1';          // fiches PDF : conservées d'une version à l'autre
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'pwa-register.js',
